@@ -154,18 +154,6 @@ print(result["playlist"][["track_name", "artists", "genre"]].head(10))
 
 ---
 
-## Team
-
-| Person | Responsibility |
-|--------|---------------|
-| Alaka | Evaluation metrics, offline model testing and validation |
-| Bhoomika | Preprocessing pipeline, feature engineering |
-| Devki | Streamlit front-end, UI layout, user input/output |
-| Jason | Data collection, Google Maps API, dataset exploration |
-| Lily | ML algorithm implementations, model training, hyperparameter tuning |
-
----
-
 ## Known Limitations
 
 - Pseudo-labels are constructed from the same `primary_type` feature that the model uses as input, which inflates evaluation metrics. The model is partially learning to invert its own labeling function.
