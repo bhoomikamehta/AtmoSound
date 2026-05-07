@@ -26,33 +26,18 @@ PRICE_MAP = {
 
 
 class AtmoSoundPipeline:
-    """End-to-end pipeline: venue data → predicted audio profile → playlist.
-
-    Parameters
-    ----------
-    artifacts_dir : str
-        Path to pipeline_artifacts/ containing the .pkl and .csv files
-        produced by the preprocessing and training notebooks.
-    """
-
     def __init__(self, artifacts_dir="pipeline_artifacts"):
         self._load_artifacts(artifacts_dir)
-
-    # ──────────────────────────────────────────────────────
-    # Loading
-    # ──────────────────────────────────────────────────────
 
     def _load_artifacts(self, d):
         with open(os.path.join(d, "deployment_transformers.pkl"), "rb") as f:
             deploy = pickle.load(f)
 
-        # Transformers
         self.tfidf = TfidfTransformer(
             deploy["tfidf_vocabulary"], deploy["tfidf_idf"], deploy["tfidf_config"])
         self.svd = SVDTransformer(deploy["svd_components"], deploy["svd_mean"])
         self.scaler = MinMaxTransformer(deploy["scaler_min"], deploy["scaler_range"])
 
-        # Schema
         self.feature_names = deploy["feature_names"]
         self.bool_cols = deploy["bool_cols"]
         self.audio_features = deploy["audio_features"]
@@ -63,11 +48,9 @@ class AtmoSoundPipeline:
         self.primary_type_list = [
             f.replace("ptype_", "") for f in self.feature_names if f.startswith("ptype_")]
 
-        # Ridge model
         with open(os.path.join(d, "ridge_model.pkl"), "rb") as f:
             self.ridge_W = pickle.load(f)["W"]
 
-        # Neural network (optional)
         nn_path = os.path.join(d, "nn_model.pkl")
         if os.path.exists(nn_path):
             with open(nn_path, "rb") as f:
@@ -78,7 +61,6 @@ class AtmoSoundPipeline:
         else:
             self.nn_model = None
 
-        # Genre profiles & song pool
         self.genre_profiles = pd.read_csv(os.path.join(d, "genre_profiles.csv"), index_col=0)
         self.genre_centroids = self.genre_profiles.values
         self.genre_names = list(self.genre_profiles.index)
@@ -87,28 +69,16 @@ class AtmoSoundPipeline:
         print(f"Pipeline loaded: {len(self.feature_names)} features, "
               f"{len(self.genre_names)} genres, {len(self.songs):,} songs")
 
-    # ──────────────────────────────────────────────────────
-    # Feature vector construction
-    # ──────────────────────────────────────────────────────
-
     def build_feature_vector(self, venue_data):
-        """Convert raw venue dict into a scaled (1, d) feature vector.
-
-        Returns (X_scaled, venue_info) where venue_info is a summary dict
-        for the Streamlit Statistics page.
-        """
-        # Rating
         rating = venue_data.get("rating")
         if rating is None or (isinstance(rating, float) and np.isnan(rating)):
             rating = self.rating_median
         rating = float(rating)
 
-        # Price
         raw_price = venue_data.get("price_level")
         price_encoded = PRICE_MAP.get(raw_price, 0)
         price_missing = 1 if raw_price is None else 0
 
-        # Booleans
         bool_values, bool_info = [], {}
         for col in self.bool_cols:
             val = venue_data.get(col)
@@ -119,25 +89,21 @@ class AtmoSoundPipeline:
             else:
                 bool_values.append(-1); bool_info[col] = None
 
-        # Neighbourhood one-hot
         neigh = venue_data.get("neighbourhood", "")
         neigh_vec = np.zeros(len(self.neighbourhood_list))
         if neigh in self.neighbourhood_list:
             neigh_vec[self.neighbourhood_list.index(neigh)] = 1
 
-        # Primary type one-hot
         ptype = venue_data.get("primary_type", "")
         ptype_vec = np.zeros(len(self.primary_type_list))
         if ptype in self.primary_type_list:
             ptype_vec[self.primary_type_list.index(ptype)] = 1
 
-        # Text → TF-IDF → SVD
         review = venue_data.get("review_summary", "") or ""
         gen_summary = venue_data.get("generative_summary", "") or ""
         combined = (review + " " + gen_summary).strip()
         text_svd = self.svd.transform(self.tfidf.transform([combined]))
 
-        # Assemble & scale
         raw = np.concatenate([
             [rating], [price_encoded, price_missing],
             bool_values, neigh_vec, ptype_vec, text_svd.flatten()
@@ -154,12 +120,7 @@ class AtmoSoundPipeline:
         }
         return self.scaler.transform(raw), venue_info
 
-    # ──────────────────────────────────────────────────────
-    # Prediction
-    # ──────────────────────────────────────────────────────
-
     def predict_audio_profile(self, X, model="ridge"):
-        """Predict 7-dim audio profile. Returns shape (7,)."""
         if model == "nn" and self.nn_model is not None:
             pred = self.nn_model.predict(X)
         else:
@@ -168,31 +129,20 @@ class AtmoSoundPipeline:
         return np.clip(pred, 0, 1).flatten()
 
     def get_nearest_genres(self, profile, k=5):
-        """Return the K closest genre centroids as a list of dicts."""
         dists = np.linalg.norm(self.genre_centroids - profile, axis=1)
         top_k = np.argsort(dists)[:k]
         return [{"genre": self.genre_names[i],
                  "distance": float(dists[i]),
                  "profile": self.genre_centroids[i].tolist()} for i in top_k]
 
-    # ──────────────────────────────────────────────────────
-    # Song sampling
-    # ──────────────────────────────────────────────────────
-
     def sample_songs(self, nearest_genres, n_songs=25, seed=None):
-        """Sample songs from nearest genres, weighted by popularity.
-
-        Returns a DataFrame with track details, ordered in an
-        energy arc (build up → peak → cool down).
-        """
         rng = np.random.RandomState(seed)
 
-        # Allocate songs per genre (closer genres get more)
         dists = np.array([g["distance"] for g in nearest_genres])
         weights = 1.0 / (dists + 1e-6)
         weights /= weights.sum()
         counts = np.maximum(np.round(weights * n_songs).astype(int), 1)
-        counts[0] += n_songs - counts.sum()  # hit the target total
+        counts[0] += n_songs - counts.sum()
 
         sampled = []
         for genre_info, n in zip(nearest_genres, counts):
@@ -215,15 +165,13 @@ class AtmoSoundPipeline:
 
         playlist = pd.concat(sampled, ignore_index=True).head(n_songs)
 
-        # Select output columns
-        keep = ["track_name", "artists", "album_name", "track_genre_clean",
+        keep = ["track_id", "track_name", "artists", "album_name", "track_genre_clean",
                 "popularity", "duration_ms", "danceability", "energy",
                 "acousticness", "valence", "instrumentalness",
                 "liveness", "speechiness"]
         playlist = playlist[[c for c in keep if c in playlist.columns]].copy()
         playlist = playlist.rename(columns={"track_genre_clean": "genre"})
 
-        # Energy arc: start low → build to peak → cool down
         if len(playlist) > 4:
             playlist = playlist.sort_values("energy").reset_index(drop=True)
             mid = len(playlist) // 2
@@ -232,17 +180,8 @@ class AtmoSoundPipeline:
 
         return playlist
 
-    # ──────────────────────────────────────────────────────
-    # Full pipeline
-    # ──────────────────────────────────────────────────────
-
     def generate_playlist(self, venue_data, model="ridge",
                           n_songs=25, top_k_genres=5, seed=None):
-        """End-to-end: venue dict → playlist + metadata.
-
-        Returns a dict with keys: playlist, audio_profile,
-        nearest_genres, venue_info, radar_data.
-        """
         X, venue_info = self.build_feature_vector(venue_data)
         profile = self.predict_audio_profile(X, model=model)
         genres = self.get_nearest_genres(profile, k=top_k_genres)
@@ -261,7 +200,6 @@ class AtmoSoundPipeline:
         }
 
     def get_feature_importance(self, top_n=10):
-        """Top-N Ridge feature weights per audio dimension (for explainability)."""
         W = self.ridge_W[:-1, :]
         importance = {}
         for j, name in enumerate(self.audio_features):
