@@ -2,6 +2,8 @@
 
 A machine learning pipeline that takes a Google Maps venue link and generates a Spotify-style playlist matching the venue's atmosphere. Built for a Practical Applications of ML course.
 
+[Streamlit Deployed URL](https://atmosound-eejsk4pwner3sfjdojyujg.streamlit.app/): https://atmosound-eejsk4pwner3sfjdojyujg.streamlit.app/ 
+
 ---
 
 ## What It Does
