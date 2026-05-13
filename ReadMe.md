@@ -6,8 +6,6 @@ A machine learning pipeline that takes a Google Maps venue link and generates a 
 
 [Streamlit Deployed URL](https://atmosound-eejsk4pwner3sfjdojyujg.streamlit.app/): https://atmosound-eejsk4pwner3sfjdojyujg.streamlit.app/ 
 
-**Note: ** A teammember has deployed this streamlit from their Cornell Github Accound
-
 ---
 
 ## What It Does
