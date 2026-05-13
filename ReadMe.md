@@ -1,8 +1,12 @@
-# AtmoSound
+# final_project_submissions
+
+# AtmoSound (Group Project - Submitting on behalf of Group)
 
 A machine learning pipeline that takes a Google Maps venue link and generates a Spotify-style playlist matching the venue's atmosphere. Built for a Practical Applications of ML course.
 
 [Streamlit Deployed URL](https://atmosound-eejsk4pwner3sfjdojyujg.streamlit.app/): https://atmosound-eejsk4pwner3sfjdojyujg.streamlit.app/ 
+
+**Note: ** A teammember has deployed this streamlit from their Cornell Github Accound
 
 ---
 
@@ -18,7 +22,7 @@ The output is a playlist of ~25 tracks plus a radar chart showing the predicted 
 
 ---
 
-## Project Structure
+## Project Structure (Key Files)
 
 ```
 AtmoSound-Final/
@@ -50,7 +54,6 @@ AtmoSound-Final/
 ```
 
 
----
 
 ## Datasets
 
